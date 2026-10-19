@@ -47,6 +47,10 @@ namespace Dignus.Log.LogTarget
         private LogFormatRenderer _logFormatRenderer;
         private string _archiveFileName;
         private FileInfo _logFileInfo;
+        private DateTime _rollingPeriodStart;
+        private DateTime _rollingPeriodEnd;
+        private FileRollingType _cachedArchiveRollingType;
+        private bool _rollingPeriodCached;
 
         private readonly FileStreamWrapper _logFileStream = new FileStreamWrapper();
         private readonly StringBuilder _logStringBuilder = new StringBuilder();
@@ -77,6 +81,36 @@ namespace Dignus.Log.LogTarget
             }
             return fileName;
         }
+        private void CacheRollingPeriod(DateTime fileMakeTime)
+        {
+            if (ArchiveRollingType == FileRollingType.Hour)
+            {
+                _rollingPeriodStart = fileMakeTime.Date.AddHours(fileMakeTime.Hour);
+                _rollingPeriodEnd = _rollingPeriodStart.AddHours(1);
+            }
+            else if (ArchiveRollingType == FileRollingType.Day)
+            {
+                _rollingPeriodStart = fileMakeTime.Date;
+                _rollingPeriodEnd = _rollingPeriodStart.AddDays(1);
+            }
+            else if (ArchiveRollingType == FileRollingType.Week)
+            {
+                _rollingPeriodStart = DateTime.MinValue;
+                _rollingPeriodEnd = fileMakeTime.Date.AddDays(7);
+            }
+            else if (ArchiveRollingType == FileRollingType.Month)
+            {
+                _rollingPeriodStart = new DateTime(fileMakeTime.Year, fileMakeTime.Month, 1);
+                _rollingPeriodEnd = _rollingPeriodStart.AddMonths(1);
+            }
+            else
+            {
+                _rollingPeriodStart = DateTime.MinValue;
+                _rollingPeriodEnd = DateTime.MaxValue;
+            }
+            _cachedArchiveRollingType = ArchiveRollingType;
+            _rollingPeriodCached = true;
+        }
         private void CheckAndArchiveLogFile()
         {
             var logFileInfo = _logFileInfo;
@@ -84,75 +118,61 @@ namespace Dignus.Log.LogTarget
             {
                 logFileInfo = new FileInfo(LogFileName);
                 _logFileInfo = logFileInfo;
+                _rollingPeriodCached = false;
             }
             else if (string.Equals(logFileInfo.ToString(), LogFileName, StringComparison.Ordinal) == false)
             {
                 logFileInfo = new FileInfo(LogFileName);
                 _logFileInfo = logFileInfo;
+                _rollingPeriodCached = false;
             }
             else if (_logFileStream.IsOpen() == false)
             {
                 logFileInfo.Refresh();
+                _rollingPeriodCached = false;
             }
 
             if (logFileInfo.Exists == false)
             {
+                _rollingPeriodCached = false;
                 return;
             }
 
             var currentTime = DateTime.Now;
 
+            if (_rollingPeriodCached == false)
+            {
+                CacheRollingPeriod(logFileInfo.CreationTime);
+            }
+            else if (_cachedArchiveRollingType != ArchiveRollingType)
+            {
+                CacheRollingPeriod(logFileInfo.CreationTime);
+            }
+
+            if (_rollingPeriodStart <= currentTime)
+            {
+                if (currentTime < _rollingPeriodEnd)
+                {
+                    return;
+                }
+            }
+
             var fileMakeTime = logFileInfo.CreationTime;
 
             while (true)
             {
-                var needMakeNewFile = false;
-
-                if (ArchiveRollingType == FileRollingType.Hour)
+                if (_rollingPeriodStart <= currentTime)
                 {
-                    if (fileMakeTime.Date != currentTime.Date)
+                    if (currentTime < _rollingPeriodEnd)
                     {
-                        needMakeNewFile = true;
+                        return;
                     }
-                    if (fileMakeTime.Hour != currentTime.Hour)
-                    {
-                        needMakeNewFile = true;
-                    }
-                }
-                else if (ArchiveRollingType == FileRollingType.Day)
-                {
-                    if (fileMakeTime.Date != currentTime.Date)
-                    {
-                        needMakeNewFile = true;
-                    }
-                }
-                else if (ArchiveRollingType == FileRollingType.Week)
-                {
-                    if (fileMakeTime.Date.AddDays(7) <= currentTime.Date)
-                    {
-                        needMakeNewFile = true;
-                    }
-                }
-                else if (ArchiveRollingType == FileRollingType.Month)
-                {
-                    if (fileMakeTime.Year != currentTime.Year)
-                    {
-                        needMakeNewFile = true;
-                    }
-                    if (fileMakeTime.Month != currentTime.Month)
-                    {
-                        needMakeNewFile = true;
-                    }
-                }
-
-                if (needMakeNewFile == false)
-                {
-                    return;
                 }
 
                 logFileInfo.Refresh();
                 if (logFileInfo.Exists == false)
                 {
+                    _rollingPeriodCached = false;
                     return;
                 }
 
@@ -160,6 +180,7 @@ namespace Dignus.Log.LogTarget
                 if (refreshedFileMakeTime != fileMakeTime)
                 {
                     fileMakeTime = refreshedFileMakeTime;
+                    CacheRollingPeriod(fileMakeTime);
                     continue;
                 }
 
@@ -198,6 +219,7 @@ namespace Dignus.Log.LogTarget
 
             File.Move(LogFileName, archiveFileName);
             _logFileInfo = null;
+            _rollingPeriodCached = false;
         }
         private void CreateAndOpenLogFileStream(string path)
         {
@@ -211,6 +233,7 @@ namespace Dignus.Log.LogTarget
                 fileInfo.CreationTime = DateTime.Now;
             }
             _logFileInfo = fileInfo;
+            _rollingPeriodCached = false;
         }
         private int EncodeLogMessageToUtf8()
         {
