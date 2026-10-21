@@ -4,39 +4,38 @@
 
 using Dignus.Log;
 using Microsoft.Extensions.Logging;
-using System;
 using System.Collections.Concurrent;
 
 namespace Dignus.Extensions.Logging
 {
     public class DignusLoggerProvider : ILoggerProvider, ISupportExternalScope
     {
-        private IExternalScopeProvider _scopes = new LoggerExternalScopeProvider();
-        internal IExternalScopeProvider ScopeProvider { get => _scopes; }
-        private readonly Logger _logger = LogManager.GetCurrentLogger();
-        private readonly ConcurrentDictionary<string, DignusLogger> _cache = new ConcurrentDictionary<string, DignusLogger>();
+        private IExternalScopeProvider _scopeProvider = new LoggerExternalScopeProvider();
+        internal IExternalScopeProvider ScopeProvider => _scopeProvider;
+        private readonly Log.ILogger _logger;
+        private readonly ConcurrentDictionary<string, DignusLogger> _loggersByCategory = new ConcurrentDictionary<string, DignusLogger>();
 
-
-        public ILogger CreateLogger(string categoryName)
+        public DignusLoggerProvider() : this(LogManager.GetDefaultLogger())
         {
-            return _cache.GetOrAdd(categoryName, (name) =>
-            {
-                return new DignusLogger(_logger, this, name);
-            });
+        }
+
+        public DignusLoggerProvider(Log.ILogger logger)
+        {
+            _logger = logger;
+        }
+
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName)
+        {
+            return _loggersByCategory.GetOrAdd(categoryName, registeredCategoryName => new DignusLogger(_logger, this, registeredCategoryName));
         }
         public void Dispose()
         {
             _logger.Dispose();
-            _cache.Clear();
-            GC.SuppressFinalize(this);
+            _loggersByCategory.Clear();
         }
         public void SetScopeProvider(IExternalScopeProvider scopeProvider)
         {
-            _scopes = scopeProvider;
-            if (_scopes == null)
-            {
-                _scopes = new LoggerExternalScopeProvider();
-            }
+            _scopeProvider = scopeProvider ?? new LoggerExternalScopeProvider();
         }
     }
 }

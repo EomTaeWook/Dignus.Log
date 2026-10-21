@@ -10,6 +10,8 @@ namespace Dignus.Log.Model
 {
     public class LogConfiguration
     {
+        public bool UseAsyncLogger { get; set; }
+
         internal readonly Dictionary<string, ILogTargetConfig> _logTargetConfigs = new Dictionary<string, ILogTargetConfig>();
         internal readonly Dictionary<string, LoggerConfig> _loggerConfigs = new Dictionary<string, LoggerConfig>();
 

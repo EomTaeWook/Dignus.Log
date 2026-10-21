@@ -7,7 +7,7 @@
 
     <PackageId>Dignus.Log</PackageId>
     <Title>Dignus.Log</Title>
-    <Version>2.0.1</Version>
+    <Version>2.0.2</Version>
 
     <Copyright>© 2021–2026 EomTaeWook. Released under the MIT License.</Copyright>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
@@ -22,7 +22,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dignus" Version="1.4.1" />
+    <PackageReference Include="Dignus" Version="1.4.3" />
   </ItemGroup>
 
   <ItemGroup>
@@ -53,11 +53,4 @@
   <Target Name="PostPack" AfterTargets="Pack" Condition="'$(Configuration)' == 'Release'">
     <Exec Command="xcopy /Y &quot;$(OutputPath)$(PackageId).$(Version).nupkg&quot; &quot;$(SolutionDir)publish\nuget\&quot;" />
   </Target>
-
-  <ItemGroup>
-    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <!-- We use the value of AssemblyName to declare the value of the attribute -->
-      <_Parameter1>Dignus.Extensions.Logging</_Parameter1>
-    </AssemblyAttribute>
-  </ItemGroup>
 </Project>

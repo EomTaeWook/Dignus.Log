@@ -1,6 +1,7 @@
 using Dignus.Log;
 using Dignus.Log.LogTarget.Interfaces;
 using Dignus.Log.Model;
+using Serilog;
 using System;
 using System.Diagnostics;
 using System.Globalization;
@@ -19,12 +20,13 @@ internal static class Program
         string outputPath = arguments[3];
         int messageCount = verifyDelivery ? 262144 : 1048576;
         int messagesPerProducer = messageCount / producerCount;
-        Dignus.Log.Logger dignusLogger = null;
+        Dignus.Log.ILogger dignusLogger = null;
         NLog.LogFactory nlogFactory = null;
         NLog.Logger nlogLogger = null;
         Serilog.Core.Logger serilogLogger = null;
         object benchmarkResult;
         int exitCode = 0;
+        bool loggersDisposed = false;
 
         try
         {
@@ -99,42 +101,81 @@ internal static class Program
                 };
             }
 
-            switch (libraryVariant)
+            void CreateLoggers()
             {
-                case "dignus":
-                    dignusLogger = new Dignus.Log.Logger();
-                    dignusLogger._logTargetsByLevel[(int)Dignus.Log.LogLevel.Info].AddTarget(new DignusTarget(onLogWrite));
-                    break;
-                case "nlog":
-                case "nlog-concurrent":
-                    nlogFactory = new NLog.LogFactory { ThrowExceptions = verifyDelivery };
-                    NLogTarget nlogTarget = libraryVariant == "nlog-concurrent" ? new ConcurrentNLogTarget(onLogWrite) : new NLogTarget(onLogWrite);
-                    nlogTarget.Name = "benchmark";
-                    var nlogConfiguration = new NLog.Config.LoggingConfiguration();
-                    nlogConfiguration.AddRule(NLog.LogLevel.Info, NLog.LogLevel.Fatal, nlogTarget);
-                    nlogFactory.Configuration = nlogConfiguration;
-                    nlogLogger = nlogFactory.GetLogger("benchmark");
-                    Assert(nlogLogger.IsInfoEnabled, "NLog Info is disabled.");
-                    break;
-                case "serilog":
-                    serilogLogger = new Serilog.LoggerConfiguration()
-                        .MinimumLevel.Information()
-                        .WriteTo.Sink(new SerilogSink(onLogWrite))
-                        .CreateLogger();
-                    Assert(serilogLogger.IsEnabled(Serilog.Events.LogEventLevel.Information), "Serilog Information is disabled.");
-                    break;
-                default:
-                    throw new ArgumentException("Unknown variant.");
+                switch (libraryVariant)
+                {
+                    case "dignus":
+                    case "dignus-async":
+                        var dignusTarget = new DignusTarget(onLogWrite);
+                        if (libraryVariant == "dignus-async")
+                        {
+                            var asynchronousLogger = new AsyncLogger();
+                            asynchronousLogger._logTargetsByLevel[(int)Dignus.Log.LogLevel.Info].AddTarget(dignusTarget);
+                            dignusLogger = asynchronousLogger;
+                        }
+                        else
+                        {
+                            var synchronousLogger = new Dignus.Log.Logger();
+                            synchronousLogger._logTargetsByLevel[(int)Dignus.Log.LogLevel.Info].AddTarget(dignusTarget);
+                            dignusLogger = synchronousLogger;
+                        }
+                        break;
+                    case "nlog":
+                    case "nlog-concurrent":
+                    case "nlog-async":
+                        nlogFactory = new NLog.LogFactory { ThrowExceptions = verifyDelivery };
+                        NLogTarget nlogTarget = libraryVariant == "nlog-concurrent" ? new ConcurrentNLogTarget(onLogWrite) : new NLogTarget(onLogWrite);
+                        nlogTarget.Name = "benchmark";
+                        var nlogConfiguration = new NLog.Config.LoggingConfiguration();
+                        NLog.Targets.Target configuredNlogTarget = nlogTarget;
+                        if (libraryVariant == "nlog-async")
+                        {
+                            configuredNlogTarget = new NLog.Targets.Wrappers.AsyncTargetWrapper(nlogTarget, 10000, NLog.Targets.Wrappers.AsyncTargetWrapperOverflowAction.Grow) { Name = "benchmark-async" };
+                        }
+                        nlogConfiguration.AddRule(NLog.LogLevel.Info, NLog.LogLevel.Fatal, configuredNlogTarget);
+                        nlogFactory.Configuration = nlogConfiguration;
+                        nlogLogger = nlogFactory.GetLogger("benchmark");
+                        Assert(nlogLogger.IsInfoEnabled, "NLog Info is disabled.");
+                        break;
+                    case "serilog":
+                    case "serilog-async":
+                        var serilogConfiguration = new Serilog.LoggerConfiguration().MinimumLevel.Information();
+                        if (libraryVariant == "serilog-async")
+                        {
+                            serilogConfiguration.WriteTo.Async(sinkConfiguration => sinkConfiguration.Sink(new SerilogSink(onLogWrite)), bufferSize: int.MaxValue, blockWhenFull: false);
+                        }
+                        else
+                        {
+                            serilogConfiguration.WriteTo.Sink(new SerilogSink(onLogWrite));
+                        }
+                        serilogLogger = serilogConfiguration.CreateLogger();
+                        Assert(serilogLogger.IsEnabled(Serilog.Events.LogEventLevel.Information), "Serilog Information is disabled.");
+                        break;
+                    default:
+                        throw new ArgumentException("Unknown variant.");
+                }
             }
+            CreateLoggers();
+            Action closeLoggers = () =>
+            {
+                dignusLogger?.Dispose();
+                nlogFactory?.Flush(TimeSpan.FromSeconds(30));
+                nlogFactory?.Dispose();
+                serilogLogger?.Dispose();
+                loggersDisposed = true;
+            };
 
             if (verifyDelivery == false)
             {
-                Measure(dignusLogger, nlogLogger, serilogLogger, producerCount, 65536, null);
+                Measure(dignusLogger, nlogLogger, serilogLogger, producerCount, 65536, null, closeLoggers);
+                CreateLoggers();
+                loggersDisposed = false;
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
                 GC.Collect();
             }
-            var measurement = Measure(dignusLogger, nlogLogger, serilogLogger, producerCount, messageCount, messages);
+            var measurement = Measure(dignusLogger, nlogLogger, serilogLogger, producerCount, messageCount, messages, closeLoggers);
             if (verifyDelivery)
             {
                 Assert(validationErrors == 0, "Invalid, duplicated, or reordered message.");
@@ -155,14 +196,26 @@ internal static class Program
                 Status = "success",
                 MessageCount = messageCount,
                 WarmupCount = verifyDelivery ? 0 : 65536,
+                TimingIncludesFinalDispose = true,
                 NanosecondsPerLog = measurement.NanosecondsPerLog,
                 AllocatedBytes = measurement.AllocatedBytes,
                 BytesPerLog = measurement.AllocatedBytes / (double)messageCount,
+                Gen0Collections = measurement.Gen0Collections,
+                Gen1Collections = measurement.Gen1Collections,
+                Gen2Collections = measurement.Gen2Collections,
+                GcPauseMilliseconds = measurement.GcPauseMilliseconds,
                 Runtime = RuntimeInformation.FrameworkDescription,
                 ProcessorCount = Environment.ProcessorCount,
                 TieredCompilation = Environment.GetEnvironmentVariable("DOTNET_TieredCompilation"),
                 ServerGc = System.Runtime.GCSettings.IsServerGC,
-                OutputSerialization = "Monitor lock in every target",
+                OutputSerialization = libraryVariant.EndsWith("-async", StringComparison.Ordinal) ? "Asynchronous queue; library-specific target synchronization" : "Synchronous writes; library-specific target synchronization",
+                QueuePolicy = libraryVariant switch
+                {
+                    "dignus-async" => "Unbounded",
+                    "nlog-async" => "Grow",
+                    "serilog-async" => "Capacity=int.MaxValue",
+                    _ => "No asynchronous queue"
+                },
                 NLogAssembly = typeof(NLog.Logger).Assembly.FullName,
                 SerilogAssembly = typeof(Serilog.Core.Logger).Assembly.FullName,
                 TimeUtc = DateTime.UtcNow
@@ -175,9 +228,12 @@ internal static class Program
         }
         finally
         {
-            dignusLogger?.Dispose();
-            nlogFactory?.Dispose();
-            serilogLogger?.Dispose();
+            if (loggersDisposed == false)
+            {
+                dignusLogger?.Dispose();
+                nlogFactory?.Dispose();
+                serilogLogger?.Dispose();
+            }
         }
 
         string resultJson = JsonSerializer.Serialize(benchmarkResult, new JsonSerializerOptions { WriteIndented = true });
@@ -186,7 +242,7 @@ internal static class Program
         return exitCode;
     }
 
-    private static (double NanosecondsPerLog, long AllocatedBytes) Measure(Dignus.Log.Logger dignusLogger, NLog.Logger nlogLogger, Serilog.Core.Logger serilogLogger, int producerCount, int totalMessageCount, string[][] messages)
+    private static (double NanosecondsPerLog, long AllocatedBytes, int Gen0Collections, int Gen1Collections, int Gen2Collections, double GcPauseMilliseconds) Measure(Dignus.Log.ILogger dignusLogger, NLog.Logger nlogLogger, Serilog.Core.Logger serilogLogger, int producerCount, int totalMessageCount, string[][] messages, Action closeLoggers)
     {
         int messagesPerProducer = totalMessageCount / producerCount;
         using var startGate = new ManualResetEventSlim(false);
@@ -207,7 +263,7 @@ internal static class Program
                         for (int messageIndex = 0; messageIndex < messagesPerProducer; ++messageIndex)
                         {
                             string message = messages == null ? "benchmark" : messages[currentProducerIndex][messageIndex];
-                            dignusLogger.Info(message, "benchmark", 0);
+                            dignusLogger.Write(new Dignus.Log.Model.LogEvent(Dignus.Log.LogLevel.Info, message, "benchmark", 0, dignusLogger.Name));
                         }
                     }
                     else if (nlogLogger != null)
@@ -237,6 +293,10 @@ internal static class Program
         }
 
         Assert(producersReady.Wait(10000), "Benchmark threads were not ready.");
+        int gen0CollectionsBefore = GC.CollectionCount(0);
+        int gen1CollectionsBefore = GC.CollectionCount(1);
+        int gen2CollectionsBefore = GC.CollectionCount(2);
+        TimeSpan gcPauseBefore = GC.GetTotalPauseDuration();
         long allocatedBefore = GC.GetTotalAllocatedBytes(true);
         long startTimestamp = Stopwatch.GetTimestamp();
         startGate.Set();
@@ -244,13 +304,18 @@ internal static class Program
         {
             Assert(producerThread.Join(30000), "Producer timed out.");
         }
-        long elapsedTicks = Stopwatch.GetTimestamp() - startTimestamp;
-        long allocatedBytes = GC.GetTotalAllocatedBytes(true) - allocatedBefore;
         foreach (Exception producerError in producerErrors)
         {
             Assert(producerError == null, "Producer failed: " + producerError);
         }
-        return (elapsedTicks * (1000000000.0 / Stopwatch.Frequency) / totalMessageCount, allocatedBytes);
+        closeLoggers?.Invoke();
+        long elapsedTicks = Stopwatch.GetTimestamp() - startTimestamp;
+        double gcPauseMilliseconds = (GC.GetTotalPauseDuration() - gcPauseBefore).TotalMilliseconds;
+        int gen0Collections = GC.CollectionCount(0) - gen0CollectionsBefore;
+        int gen1Collections = GC.CollectionCount(1) - gen1CollectionsBefore;
+        int gen2Collections = GC.CollectionCount(2) - gen2CollectionsBefore;
+        long allocatedBytes = GC.GetTotalAllocatedBytes(true) - allocatedBefore;
+        return (elapsedTicks * (1000000000.0 / Stopwatch.Frequency) / totalMessageCount, allocatedBytes, gen0Collections, gen1Collections, gen2Collections, gcPauseMilliseconds);
     }
 
     private static void Assert(bool condition, string message)
@@ -264,19 +329,15 @@ internal static class Program
     private sealed class DignusTarget : ILogTarget
     {
         private readonly Action<string> _onWrite;
-        private readonly object _syncObj = new object();
         public DignusTarget(Action<string> onWrite)
         {
             _onWrite = onWrite;
         }
         public void Write(Dignus.Log.Model.LogEvent logEvent)
         {
-            lock (_syncObj)
+            if (_onWrite != null)
             {
-                if (_onWrite != null)
-                {
-                    _onWrite(logEvent.Message);
-                }
+                _onWrite(logEvent.Message);
             }
         }
         public void Dispose() { }

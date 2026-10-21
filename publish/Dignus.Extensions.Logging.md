@@ -12,7 +12,7 @@ within the standard ASP.NET Core and .NET logging infrastructure.
 | :--- | :--- |
 | **ASP.NET Core Integration** | Enables Dignus logging through the `ILogger` interface and `ILoggerFactory`. |
 | **Category Support** | Adds log category support (`${category}`) for structured log output. |
-| **Scope Handling** | Fully compatible with .NET’s `IExternalScopeProvider`. |
+| **Scope Handling** | Accepts `BeginScope()` values through `IExternalScopeProvider`; arbitrary scope values are not included in output by default. |
 | **Automatic Registration** | `AddDignusLog()` extension method integrates logging and configuration automatically. |
 
 ---
@@ -22,8 +22,8 @@ within the standard ASP.NET Core and .NET logging infrastructure.
 | API | Purpose |
 | :--- | :--- |
 | `AddDignusLog(this IServiceCollection services, LogConfiguration logConfiguration)` | Registers the Dignus logging provider and initializes log configuration. |
+| `AddDignusLog<TLogger>(this IServiceCollection services, LogConfiguration logConfiguration)` | Registers `TLogger` as `Dignus.Log.ILogger` when no implementation is registered. |
 | `DignusLoggerProvider` | Implements `ILoggerProvider` to route .NET log events into the Dignus logger. |
-| `DignusLogger` | Handles `ILogger` calls, converts log levels, and formats categorized log entries. |
 
 ---
 
@@ -38,26 +38,28 @@ using Microsoft.Extensions.Logging;
 var services = new ServiceCollection();
 
 // Load Dignus logging configuration
-var logConfig = LogConfigXmlReader.Load("log.config");
+var logConfiguration = LogConfigXmlReader.Load("log.config");
 
 // Integrate with Microsoft.Extensions.Logging
-services.AddLogging(builder =>
+services.AddLogging(loggingBuilder =>
 {
-    builder.ClearProviders();
-    builder.AddDignusLog(logConfig);
+    loggingBuilder.ClearProviders();
+    loggingBuilder.Services.AddDignusLog(logConfiguration);
 });
 
-var provider = services.BuildServiceProvider();
-var logger = provider.GetRequiredService<ILogger<Program>>();
+var serviceProvider = services.BuildServiceProvider();
+var applicationLogger = serviceProvider.GetRequiredService<ILogger<Program>>();
 
-logger.LogInformation("Hello from Dignus Logging!");
+applicationLogger.LogInformation("Hello from Dignus Logging!");
 ```
+
+With the default overload, omit `loggerName` in the XML configuration to route rules to the default `Dignus.Log` logger.
 
 ## Design Principles
 
 - **Category Awareness:** Extends `LogEvent` to include category metadata for structured logging.  
 - **Optimized Formatting:** Uses cached delegates for element rendering to minimize overhead.
 - **Full .NET Integration:** Works natively with ASP.NET Core’s logging pipeline.  
-- **Scoped Logging Support:** Handles `IExternalScopeProvider` and `BeginScope()` seamlessly.  
+- **Scoped Logging Support:** Accepts `BeginScope()` values; arbitrary scope values are not rendered by default.
 
 ---

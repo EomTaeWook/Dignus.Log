@@ -1,6 +1,6 @@
 # Dignus.Log
 
-`Dignus.Log` routes messages to console, file, and database targets. Configure targets in C# or XML, then write through `LogHelper` or a named `Logger`.
+`Dignus.Log` routes messages to console, file, and database targets. Configure targets in C# or XML, then write through `LogHelper` or `ILogger`.
 
 ## Install
 
@@ -10,7 +10,7 @@ dotnet add package Dignus.Log
 
 ## Configure in C#
 
-The example sends `Info` and higher messages to a file. Create a separate target and rule for each additional output.
+This example configures the default synchronous logger to write `Info` and higher messages to a file. `Build()` creates the default logger after configuring its targets.
 
 ```csharp
 using Dignus.Log;
@@ -31,14 +31,58 @@ var fileLogTarget = new FileLogTarget
 };
 
 var logConfiguration = new LogConfiguration();
-logConfiguration.AddLogRule("file", new LoggerRule("app", LogLevel.Info, fileLogTarget));
+string defaultLoggerName = typeof(LogManager).Assembly.GetName().Name;
+logConfiguration.AddLogRule("file", new LoggerRule(defaultLoggerName, LogLevel.Info, fileLogTarget));
 
 LogBuilder.Configuration(logConfiguration).Build();
-LogHelper.SetLogger(LogManager.GetLogger("app"));
-LogHelper.Info("Application started");
+ILogger logger = LogManager.GetDefaultLogger();
+logger.Write(LogLevel.Info, "Application started", string.Empty, 0);
 ```
 
-`LogHelper` provides `Debug`, `Info`, `Error`, and `Fatal` overloads for strings and exceptions. String overloads capture the caller's file path and line number. Call `LogManager.Dispose()` when shutting down to finish pending writes and dispose targets. The builder also registers a process-exit handler.
+## Synchronous and asynchronous logging
+
+### Logger: synchronous output
+
+With the default `UseAsyncLogger` value (`false`), `GetDefaultLogger()` returns a synchronous `Logger`. It writes to its targets on the calling thread, holding one logger-level lock until output finishes. It has no event queue or worker thread. Concurrent callers wait for that lock.
+
+Direct `ILogger.Write` calls require a level, message, caller file path, and caller line number. Use `string.Empty` and `0` when caller information is unnecessary, or use `LogHelper` below to capture it automatically.
+
+### AsyncLogger: background output
+
+To use an `AsyncLogger` instead, set `logConfiguration.UseAsyncLogger = true` before `Build()`. `GetDefaultLogger()` then returns the asynchronous logger with the configured targets. Choose this setting before the one-time build.
+
+```csharp
+logConfiguration.UseAsyncLogger = true;
+LogBuilder.Configuration(logConfiguration).Build();
+ILogger asynchronousLogger = LogManager.GetDefaultLogger();
+asynchronousLogger.Write(LogLevel.Info, "Queued for background output", string.Empty, 0);
+```
+
+The asynchronous snippet replaces the build and logger retrieval in the first example; do not call `Build()` twice. `Logger` and `AsyncLogger` each implement `ILogger`. `AsyncLogger` uses an unbounded MPSC queue and one dedicated background thread. Calls return after enqueueing; target output runs on that thread. `Dispose()` drains queued events before disposing targets. Sustained input faster than output can grow the queue and its memory usage.
+
+### LogHelper
+
+`LogHelper` provides `Debug`, `Info`, `Error`, and `Fatal` overloads for strings and exceptions. String overloads capture the caller's file path and line number. After `Build()`, it uses the default logger automatically:
+
+```csharp
+LogHelper.Info("Application started with caller information");
+```
+
+`LogHelper.SetLogger(ILogger)` selects a different logger for subsequent static calls. That selection is shared by all `LogHelper` calls.
+
+### Shutdown and logger names
+
+Stop producing messages, then shut down the logger:
+
+```csharp
+LogManager.Dispose();
+```
+
+This waits for pending asynchronous writes and disposes the targets of registered loggers. The builder also registers a process-exit handler.
+
+`GetDefaultLogger()` returns the logger created by `Build()`. `GetLogger(name)` only retrieves a previously registered logger; it does not create one. To use a custom `ILogger`, register it with `LogManager.RegisterLogger(logger)` before retrieving it by name.
+
+Target write exceptions from `Logger` propagate to the logging caller. With `AsyncLogger`, they occur on the dedicated processing thread and cannot propagate to the logging caller. Neither logger retries failed events.
 
 ## Configure in XML
 
@@ -62,15 +106,14 @@ Give each target a unique `id`. A `<logger>` refers to that target through its `
     </target>
   </targets>
   <loggers>
-    <logger id="consoleConfig" loggerName="app" minLogLevel="Debug"/>
-    <logger id="fileConfig" loggerName="app" minLogLevel="Info"/>
+    <logger id="consoleConfig" minLogLevel="Debug"/>
+    <logger id="fileConfig" minLogLevel="Info"/>
   </loggers>
 </configuration>
 ```
 
 ```csharp
 LogBuilder.Configuration(LogConfigXmlReader.Load("DignusLog.config")).Build();
-LogHelper.SetLogger(LogManager.GetLogger("app"));
 LogHelper.Info("Application started");
 ```
 
@@ -150,7 +193,7 @@ Add a matching `<logger id="databaseConfig" loggerName="app" minLogLevel="Info"/
 
 ## Custom targets
 
-Implement `ILogTarget.Write(LogEvent)` and `ILogTarget.Dispose()`, then add the target with `LogConfiguration.AddLogRule(...)` as in the C# example. A logger dispatches its own queued events serially. If several loggers share the same target instance, the target implementation must handle their concurrent calls.
+Implement `ILogTarget.Write(LogEvent)` and `ILogTarget.Dispose()`, then add the target with `LogConfiguration.AddLogRule(...)` as in the C# example. Each logger serializes its own target calls: `Logger` uses a lock, and `AsyncLogger` uses its dedicated consumer thread. If several loggers share the same target instance, the target implementation must handle their concurrent calls.
 
 ## License
 

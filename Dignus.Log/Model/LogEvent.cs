@@ -15,7 +15,7 @@ namespace Dignus.Log.Model
         public readonly int CallerLineNumber;
         public readonly string LoggerName;
 
-        public LogEvent(in LogLevel logLevel, in string message, in string callerFilePath, in int callerLineNumber, in string loggerName)
+        public LogEvent(LogLevel logLevel, string message, string callerFilePath, int callerLineNumber, string loggerName)
         {
             LogLevel = logLevel;
             Message = message;

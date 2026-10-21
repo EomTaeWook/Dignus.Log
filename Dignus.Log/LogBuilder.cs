@@ -4,6 +4,7 @@
 
 using Dignus.DependencyInjection;
 using Dignus.Log.Attributes;
+using Dignus.Log.Formatting;
 using Dignus.Log.LogTarget.Interfaces;
 using Dignus.Log.Model;
 using Dignus.Log.Rule;
@@ -59,6 +60,7 @@ namespace Dignus.Log
                 _loggerRules.Add(rule.Key, rule.Value);
             }
 
+            LogManager.RegisterDefaultLogger(_logConfiguration.UseAsyncLogger);
 
             return serviceProvider;
         }
@@ -93,6 +95,11 @@ namespace Dignus.Log
 
                 _loggerRules.Add(loggerConfig.ConfigKey, rule);
             }
+        }
+        public void RegisterAssembly(Assembly assembly)
+        {
+            FormatElements.RegisterFromAssembly(assembly);
+            RegisterLogTargets(assembly);
         }
         internal void RegisterLogTargets(Assembly assembly)
         {
