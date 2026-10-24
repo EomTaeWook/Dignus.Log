@@ -10,7 +10,7 @@ using System.Text;
 namespace Dignus.Log.Elements
 {
     [LogElement("level")]
-    internal class LogLevel : IFormatElement
+    internal class LogLevelElement : IFormatElement
     {
         public void Write(StringBuilder stringBuilder, LogEvent logMessageModel)
         {

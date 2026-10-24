@@ -3,7 +3,6 @@
 // Part of Dignus Library
 
 using Dignus.Collections;
-using Dignus.Log.Attributes;
 using Dignus.Log.Formatting;
 using Dignus.Log.Formatting.Interfaces;
 using Dignus.Log.LogTarget.Interfaces;
@@ -16,7 +15,6 @@ using System.Text;
 
 namespace Dignus.Log.LogTarget
 {
-    [LogTarget("file")]
     public class FileLogTarget : ILogTarget
     {
         public string LogFileName { get; set; } = "log.txt";
@@ -26,7 +24,7 @@ namespace Dignus.Log.LogTarget
             get => _archiveFileName;
             set
             {
-                _archiveFileName = value.Replace(@"{#}", @"{0}");
+                _archiveFileName = value?.Replace(@"{#}", @"{0}");
             }
         }
         public uint MaxArchiveFile { get; set; }
@@ -53,6 +51,7 @@ namespace Dignus.Log.LogTarget
         private bool _rollingPeriodCached;
 
         private readonly FileStreamWrapper _logFileStream = new FileStreamWrapper();
+        private readonly object _syncObj = new object();
         private readonly StringBuilder _logStringBuilder = new StringBuilder();
         private char[] _characterBuffer = new char[1024];
         private byte[] _byteBuffer = new byte[4096];
@@ -77,7 +76,7 @@ namespace Dignus.Log.LogTarget
             }
             else if (ArchiveRollingType == FileRollingType.Month)
             {
-                fileName = fileMakeTime.ToString("yyyyMMdd");
+                fileName = fileMakeTime.ToString("yyyyMM");
             }
             return fileName;
         }
@@ -111,7 +110,7 @@ namespace Dignus.Log.LogTarget
             _cachedArchiveRollingType = ArchiveRollingType;
             _rollingPeriodCached = true;
         }
-        private void CheckAndArchiveLogFile()
+        private void CheckAndArchiveLogFile(DateTime currentTime)
         {
             var logFileInfo = _logFileInfo;
             if (logFileInfo == null)
@@ -137,8 +136,6 @@ namespace Dignus.Log.LogTarget
                 _rollingPeriodCached = false;
                 return;
             }
-
-            var currentTime = DateTime.Now;
 
             if (_rollingPeriodCached == false)
             {
@@ -193,7 +190,7 @@ namespace Dignus.Log.LogTarget
 
             var archiveFileName = string.Format(ArchiveFileName, suffix);
 
-            DirectoryInfo directoryInfo = new DirectoryInfo(Path.GetDirectoryName(archiveFileName));
+            DirectoryInfo directoryInfo = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(archiveFileName)));
 
             if (directoryInfo.Exists == false)
             {
@@ -204,10 +201,9 @@ namespace Dignus.Log.LogTarget
 
             if (MaxArchiveFile > 0)
             {
-                if (files.Count >= MaxArchiveFile)
+                for (int i = 0; i + MaxArchiveFile <= files.Count; ++i)
                 {
-                    FileInfo oldFileInfo = files[0];
-                    oldFileInfo.Delete();
+                    files[i].Delete();
                 }
             }
             var count = 1;
@@ -254,7 +250,17 @@ namespace Dignus.Log.LogTarget
         }
         public void Write(LogEvent logEvent)
         {
-            CheckAndArchiveLogFile();
+            lock (_syncObj)
+            {
+                WriteCore(logEvent);
+            }
+        }
+        private void WriteCore(LogEvent logEvent)
+        {
+            if (string.IsNullOrEmpty(_archiveFileName) == false)
+            {
+                CheckAndArchiveLogFile(logEvent.DateTime);
+            }
 
             if (_logFileStream.IsOpen() == false)
             {
@@ -280,7 +286,10 @@ namespace Dignus.Log.LogTarget
         }
         public void Dispose()
         {
-            _logFileStream.Dispose();
+            lock (_syncObj)
+            {
+                _logFileStream.Dispose();
+            }
         }
     }
 }

@@ -21,9 +21,9 @@ within the standard ASP.NET Core and .NET logging infrastructure.
 
 | API | Purpose |
 | :--- | :--- |
-| `AddDignusLog(this IServiceCollection services, LogConfiguration logConfiguration)` | Registers the Dignus logging provider and initializes log configuration. |
-| `AddDignusLog<TLogger>(this IServiceCollection services, LogConfiguration logConfiguration)` | Registers `TLogger` as `Dignus.Log.ILogger` when no implementation is registered. |
-| `DignusLoggerProvider` | Implements `ILoggerProvider` to route .NET log events into the Dignus logger. |
+| `AddDignusLog(this IServiceCollection services, LogConfiguration logConfiguration)` | Registers the Dignus logging provider and builds the log configuration with `LogBuilder`, so do not call `LogBuilder.Build()` separately. |
+| `AddDignusLog(this IServiceCollection services, LogConfiguration logConfiguration, string loggerName)` | Same as above, but routes .NET log events to the Dignus logger with that name instead of the default logger. |
+| `DignusLoggerProvider` | Implements `ILoggerProvider` to route .NET log events into the Dignus logger. Disposing the provider does not dispose that logger; `LogManager.Dispose()` does. |
 
 ---
 
@@ -53,7 +53,7 @@ var applicationLogger = serviceProvider.GetRequiredService<ILogger<Program>>();
 applicationLogger.LogInformation("Hello from Dignus Logging!");
 ```
 
-With the default overload, omit `loggerName` in the XML configuration to route rules to the default `Dignus.Log` logger.
+With the default overload, the provider writes through the default logger, which is named after the entry assembly. Leave `loggerName` empty or omit it on the XML `<logger>` element to attach targets to that logger.
 
 ## Design Principles
 

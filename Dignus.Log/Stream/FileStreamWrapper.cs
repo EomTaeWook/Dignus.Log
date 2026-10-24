@@ -37,10 +37,6 @@ namespace Dignus.Log.Stream
             }
         }
         
-        public void Write(byte[] bytes)
-        {
-            Write(bytes, bytes.Length);
-        }
         public void Write(byte[] bytes, int count)
         {
             _fileStream.Write(bytes, 0, count);

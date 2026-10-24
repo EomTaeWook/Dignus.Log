@@ -101,25 +101,27 @@ internal static class Program
                 };
             }
 
-            void CreateLoggers()
+            switch (libraryVariant)
+            {
+                case "dignus":
+                case "dignus-async":
+                    var logConfiguration = new LogConfiguration();
+                    logConfiguration.AddLogger(string.Empty, LoggerType.Sync);
+                    foreach (string loggerName in new[] { "warmup", "benchmark" })
+                    {
+                        logConfiguration.AddLogger(loggerName, libraryVariant == "dignus-async" ? LoggerType.Async : LoggerType.Sync).AddLogTarget(Dignus.Log.LogLevel.Info, new DignusTarget(onLogWrite));
+                    }
+                    LogBuilder.Configuration(logConfiguration).Build();
+                    break;
+            }
+
+            void CreateLoggers(string loggerName)
             {
                 switch (libraryVariant)
                 {
                     case "dignus":
                     case "dignus-async":
-                        var dignusTarget = new DignusTarget(onLogWrite);
-                        if (libraryVariant == "dignus-async")
-                        {
-                            var asynchronousLogger = new AsyncLogger();
-                            asynchronousLogger._logTargetsByLevel[(int)Dignus.Log.LogLevel.Info].AddTarget(dignusTarget);
-                            dignusLogger = asynchronousLogger;
-                        }
-                        else
-                        {
-                            var synchronousLogger = new Dignus.Log.Logger();
-                            synchronousLogger._logTargetsByLevel[(int)Dignus.Log.LogLevel.Info].AddTarget(dignusTarget);
-                            dignusLogger = synchronousLogger;
-                        }
+                        dignusLogger = LogManager.GetLogger(loggerName);
                         break;
                     case "nlog":
                     case "nlog-concurrent":
@@ -156,7 +158,7 @@ internal static class Program
                         throw new ArgumentException("Unknown variant.");
                 }
             }
-            CreateLoggers();
+            CreateLoggers(verifyDelivery ? "benchmark" : "warmup");
             Action closeLoggers = () =>
             {
                 dignusLogger?.Dispose();
@@ -169,7 +171,7 @@ internal static class Program
             if (verifyDelivery == false)
             {
                 Measure(dignusLogger, nlogLogger, serilogLogger, producerCount, 65536, null, closeLoggers);
-                CreateLoggers();
+                CreateLoggers("benchmark");
                 loggersDisposed = false;
                 GC.Collect();
                 GC.WaitForPendingFinalizers();

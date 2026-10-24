@@ -2,7 +2,6 @@
 // MIT License — https://opensource.org/licenses/MIT
 // Part of Dignus Library
 
-using Dignus.Log.Attributes;
 using Dignus.Log.Formatting;
 using Dignus.Log.Formatting.Interfaces;
 using Dignus.Log.LogTarget.Interfaces;
@@ -12,7 +11,6 @@ using System.Text;
 
 namespace Dignus.Log.LogTarget
 {
-    [LogTarget("console")]
     public class ConsoleLogTarget : ILogTarget
     {
         public ConsoleColor DebugColor { get; set; } = ConsoleColor.White;
@@ -25,10 +23,6 @@ namespace Dignus.Log.LogTarget
             set
             {
                 if (value is ILogFormatRenderer)
-                {
-                    _logFormatRenderer = value;
-                }
-                else
                 {
                     _logFormatRenderer = value;
                 }
@@ -62,11 +56,18 @@ namespace Dignus.Log.LogTarget
             var textWriter = Console.Out;
             lock (textWriter)
             {
-                var color = GetLogColor(logEvent.LogLevel);
-                Console.ForegroundColor = color;
-                _logFormatRenderer.RenderTo(_logStringBuilder, logEvent);
-                textWriter.WriteLine(_logStringBuilder.ToString());
-                _logStringBuilder.Clear();
+                var previousColor = Console.ForegroundColor;
+                Console.ForegroundColor = GetLogColor(logEvent.LogLevel);
+                try
+                {
+                    _logFormatRenderer.RenderTo(_logStringBuilder, logEvent);
+                    textWriter.WriteLine(_logStringBuilder.ToString());
+                }
+                finally
+                {
+                    _logStringBuilder.Clear();
+                    Console.ForegroundColor = previousColor;
+                }
             }
         }
         public void Dispose()

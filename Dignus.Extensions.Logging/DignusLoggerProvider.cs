@@ -30,7 +30,6 @@ namespace Dignus.Extensions.Logging
         }
         public void Dispose()
         {
-            _logger.Dispose();
             _loggersByCategory.Clear();
         }
         public void SetScopeProvider(IExternalScopeProvider scopeProvider)

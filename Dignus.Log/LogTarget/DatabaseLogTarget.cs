@@ -2,7 +2,6 @@
 // MIT License — https://opensource.org/licenses/MIT
 // Part of Dignus Library
 
-using Dignus.Log.Attributes;
 using Dignus.Log.Formatting;
 using Dignus.Log.Formatting.Interfaces;
 using Dignus.Log.LogTarget.Interfaces;
@@ -15,12 +14,11 @@ using System.Threading;
 
 namespace Dignus.Log.LogTarget
 {
-    [LogTarget("database")]
     public class DatabaseLogTarget : ILogTarget
     {
-        public string DbConnection { get; internal set; }
-        public Type DbProvider { get; internal set; }
-        public bool KeepConnection { get; internal set; }
+        public string DbConnection { get; set; }
+        public Type DbProvider { get; set; }
+        public bool KeepConnection { get; set; }
 
         public LogFormatRenderer CommandTextRenderer
         {
@@ -31,14 +29,10 @@ namespace Dignus.Log.LogTarget
                 {
                     _commandTextRenderer = value;
                 }
-                else
-                {
-                    _commandTextRenderer = value;
-                }
             }
         }
 
-        internal readonly Dictionary<string, LogFormatRenderer> _dbParameters = new Dictionary<string, LogFormatRenderer>();
+        private readonly Dictionary<string, LogFormatRenderer> _dbParameters = new Dictionary<string, LogFormatRenderer>();
 
         private LogFormatRenderer _commandTextRenderer;
         private readonly StringBuilder _logStringBuilder = new StringBuilder();
@@ -50,11 +44,23 @@ namespace Dignus.Log.LogTarget
         {
             _commandTextRenderer = LogFormatElementCreator.CreateDefaultRenderer();
         }
+        public void AddDbParameter(string parameterName, LogFormatRenderer valueRenderer)
+        {
+            _dbParameters.Add(parameterName, valueRenderer);
+        }
         private void CreateDbConnection()
         {
+            if (DbProvider == null)
+            {
+                throw new InvalidOperationException("The database provider is not set. Set DbProvider to an IDbConnection type.");
+            }
             var constructor = DbProvider.GetConstructor(Type.EmptyTypes);
 
             _dbConnection = constructor?.Invoke(new object[0]) as IDbConnection;
+            if (_dbConnection == null)
+            {
+                throw new InvalidOperationException($"The database provider '{DbProvider}' must be an IDbConnection with a public parameterless constructor.");
+            }
 
             _dbConnection.ConnectionString = DbConnection;
         }
@@ -68,6 +74,10 @@ namespace Dignus.Log.LogTarget
         }
         private void WriteCore(LogEvent logMessage)
         {
+            if (_dbConnection != null && _dbConnection.State != ConnectionState.Open)
+            {
+                DisposeCore();
+            }
             if (_dbConnection == null)
             {
                 CreateDbConnection();

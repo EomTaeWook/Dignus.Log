@@ -17,6 +17,11 @@ namespace Dignus.Log
         Error,
         Fatal
     }
+    public enum LoggerType
+    {
+        Sync,
+        Async
+    }
     public enum FileRollingType
     {
         Hour,

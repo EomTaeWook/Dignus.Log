@@ -2,7 +2,6 @@
 // MIT License — https://opensource.org/licenses/MIT
 // Part of Dignus Library
 
-using Dignus.Collections;
 using Dignus.Log.Elements.Interfaces;
 using Dignus.Log.Formatting.Interfaces;
 using Dignus.Log.Model;
@@ -19,7 +18,8 @@ namespace Dignus.Log.Formatting
             return renderer;
         }
 
-        private readonly ArrayQueue<IFormatElement> _logFormatElements = new ArrayQueue<IFormatElement>();
+        private string _logFormatPattern = LogFormatElementCreator.DefaultLogFormat;
+        private IFormatElement[] _logFormatElements;
 
         public LogFormatRenderer()
         {
@@ -30,15 +30,24 @@ namespace Dignus.Log.Formatting
         }
         public void SetLogFormat(string logFormatPattern)
         {
-            var logFormatElements = LogFormatElementCreator.Parse(logFormatPattern);
-            _logFormatElements.Clear();
-            _logFormatElements.AddRange(logFormatElements);
+            if (string.IsNullOrEmpty(logFormatPattern) == true)
+            {
+                logFormatPattern = LogFormatElementCreator.DefaultLogFormat;
+            }
+            _logFormatPattern = logFormatPattern;
+            _logFormatElements = null;
         }
         public void RenderTo(StringBuilder stringBuilder, LogEvent logEvent)
         {
-            for (int index = 0; index < _logFormatElements.Count; ++index)
+            var logFormatElements = _logFormatElements;
+            if (logFormatElements == null)
             {
-                _logFormatElements[index].Write(stringBuilder, logEvent);
+                logFormatElements = LogFormatElementCreator.Parse(_logFormatPattern).ToArray();
+                _logFormatElements = logFormatElements;
+            }
+            for (int index = 0; index < logFormatElements.Length; ++index)
+            {
+                logFormatElements[index].Write(stringBuilder, logEvent);
             }
         }
     }

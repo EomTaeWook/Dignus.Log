@@ -5,11 +5,11 @@
 using Dignus.Collections;
 using Dignus.Log.LogTarget.Interfaces;
 using Dignus.Log.Model;
-using System;
+using System.Collections.Generic;
 
 namespace Dignus.Log
 {
-    internal class TargetsByLevelDispatcher : IDisposable
+    internal class TargetsByLevelDispatcher
     {
         private readonly ArrayQueue<ILogTarget> _logTargets = new ArrayQueue<ILogTarget>();
 
@@ -24,11 +24,19 @@ namespace Dignus.Log
         {
             _logTargets.Add(logTarget);
         }
-        public void Dispose()
+        internal static void DisposeTargets(TargetsByLevelDispatcher[] logTargetsByLevel)
         {
-            for (int i = 0; i < _logTargets.Count; ++i)
+            var logTargets = new UniqueSet<ILogTarget>();
+            for (int i = 0; i < logTargetsByLevel.Length; ++i)
             {
-                _logTargets[i].Dispose();
+                var dispatcher = logTargetsByLevel[i];
+                for (int ii = 0; ii < dispatcher._logTargets.Count; ++ii)
+                {
+                    if (logTargets.Add(dispatcher._logTargets[ii]) == true)
+                    {
+                        dispatcher._logTargets[ii].Dispose();
+                    }
+                }
             }
         }
     }

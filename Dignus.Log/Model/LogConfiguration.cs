@@ -2,40 +2,43 @@
 // MIT License — https://opensource.org/licenses/MIT
 // Part of Dignus Library
 
-using Dignus.Log.Model.Interfaces;
-using Dignus.Log.Rule;
+using Dignus.Log.LogTarget.Interfaces;
+using System;
 using System.Collections.Generic;
 
 namespace Dignus.Log.Model
 {
     public class LogConfiguration
     {
-        public bool UseAsyncLogger { get; set; }
-
-        internal readonly Dictionary<string, ILogTargetConfig> _logTargetConfigs = new Dictionary<string, ILogTargetConfig>();
         internal readonly Dictionary<string, LoggerConfig> _loggerConfigs = new Dictionary<string, LoggerConfig>();
-
-        internal readonly Dictionary<string, LoggerRule> _loggerRules = new Dictionary<string, LoggerRule>();
-        public void AddLogTargetConfig(ILogTargetConfig logTargetConfig)
+        public LoggerConfig AddLogger(string loggerName, LoggerType loggerType)
         {
-            _logTargetConfigs.Add(logTargetConfig.LoggerKey, logTargetConfig);
+            loggerName = ToLoggerName(loggerName);
+            if (_loggerConfigs.ContainsKey(loggerName) == true)
+            {
+                throw new InvalidOperationException($"The logger '{loggerName}' has already been added.");
+            }
+            var loggerConfig = new LoggerConfig(loggerName, loggerType);
+            _loggerConfigs.Add(loggerName, loggerConfig);
+            return loggerConfig;
         }
-        public IEnumerable<ILogTargetConfig> GetLogTargetConfigs()
+        public void AddLogTarget(string loggerName, LogLevel minLogLevel, ILogTarget logTarget)
         {
-            return _logTargetConfigs.Values;
+            loggerName = ToLoggerName(loggerName);
+            if (_loggerConfigs.TryGetValue(loggerName, out LoggerConfig loggerConfig) == false)
+            {
+                loggerConfig = new LoggerConfig(loggerName, LoggerType.Async);
+                _loggerConfigs.Add(loggerName, loggerConfig);
+            }
+            loggerConfig.AddLogTarget(minLogLevel, logTarget);
         }
-
-        public void AddLoggerConfig(LoggerConfig loggerConfig)
+        internal static string ToLoggerName(string loggerName)
         {
-            _loggerConfigs.Add(loggerConfig.ConfigKey, loggerConfig);
-        }
-        public IEnumerable<LoggerConfig> GetLoggerConfigs()
-        {
-            return _loggerConfigs.Values;
-        }
-        public void AddLogRule(string loggerName, LoggerRule loggerRule)
-        {
-            _loggerRules.Add(loggerName, loggerRule);
+            if (string.IsNullOrEmpty(loggerName) == true)
+            {
+                return LogManager.DefaultLoggerName();
+            }
+            return loggerName;
         }
     }
 }

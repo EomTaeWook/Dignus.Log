@@ -1,4 +1,4 @@
-// Copyright (c) 2021 EomTaeWook
+﻿// Copyright (c) 2021 EomTaeWook
 // MIT License — https://opensource.org/licenses/MIT
 // Part of Dignus Library
 
@@ -12,6 +12,8 @@ namespace Dignus.Log.Formatting
 {
     internal class LogFormatElementCreator
     {
+        internal const string DefaultLogFormat = "${datetime} | ${level} | ${message}";
+
         public static List<IFormatElement> Parse(string logFormPattern)
         {
             StringBuilder stringBuilder = new StringBuilder();
@@ -20,32 +22,29 @@ namespace Dignus.Log.Formatting
             reader.AddRange(logFormPattern.ToCharArray());
 
             var logFormatElements = new List<IFormatElement>();
-            int ch;
-            while (reader.Count > 0)
+            while (reader.TryRead(out char ch) == true)
             {
-                ch = reader.Read();
-                if (ch == '$' && reader.Peek() == '{')
+                if (ch == '$' && reader.Count > 0 && reader.Peek() == '{')
                 {
-                    logFormatElements.Add(AddLitererFormat(stringBuilder));
+                    logFormatElements.Add(AddLiteralFormat(stringBuilder));
                     logFormatElements.Add(ParseSymbol(reader));
                     continue;
                 }
-                stringBuilder.Append((char)ch);
+                stringBuilder.Append(ch);
             }
             if (stringBuilder.Length > 0)
             {
-                logFormatElements.Add(AddLitererFormat(stringBuilder));
+                logFormatElements.Add(AddLiteralFormat(stringBuilder));
             }
 
             reader.Clear();
             return logFormatElements;
-
         }
         internal static LogFormatRenderer CreateDefaultRenderer()
         {
-            return new LogFormatRenderer("${datetime} | ${level} | ${message}");
+            return new LogFormatRenderer(DefaultLogFormat);
         }
-        private static Literal AddLitererFormat(StringBuilder sb)
+        private static Literal AddLiteralFormat(StringBuilder sb)
         {
             var logForm = new Literal
             {
@@ -57,10 +56,9 @@ namespace Dignus.Log.Formatting
         private static IFormatElement ParseSymbol(ArrayQueue<char> reader)
         {
             StringBuilder stringBuilder = new StringBuilder();
-            int ch;
-            while ((ch = reader.Read()) > 0)
+            while (reader.TryRead(out char ch) == true)
             {
-                stringBuilder.Append((char)ch);
+                stringBuilder.Append(ch);
                 if (ch == '}')
                 {
                     var symbol = GetSymbol(stringBuilder.ToString(), out string symbolFormat);
@@ -74,9 +72,11 @@ namespace Dignus.Log.Formatting
                     return formatElement;
                 }
             }
-            return null;
+            return new Literal
+            {
+                LiteralValue = $"${stringBuilder}"
+            };
         }
-
         private static string GetSymbol(string text, out string symbolFormat)
         {
             var startIndex = text.IndexOf('{') + 1;
@@ -90,6 +90,7 @@ namespace Dignus.Log.Formatting
             if ((startIndex = symbol.IndexOf(':')) > -1)
             {
                 symbolFormat = symbol.Substring(startIndex + 1, symbol.Length - startIndex - 1);
+                symbol = symbol.Substring(0, startIndex);
             }
 
             return symbol;

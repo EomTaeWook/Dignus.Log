@@ -15,22 +15,21 @@ namespace Dignus.Extensions.Logging
     public static class DignusLoggingExtensions
     {
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static IServiceCollection AddDignusLog<TLogger>(this IServiceCollection services, LogConfiguration logConfiguration) where TLogger : class, Log.ILogger
+        public static IServiceCollection AddDignusLog(this IServiceCollection services, LogConfiguration logConfiguration)
         {
-            services.TryAddSingleton<Log.ILogger, TLogger>();
+            services.TryAddSingleton<Log.ILogger>(serviceProvider => LogManager.GetDefaultLogger());
             return AddDignusLog(services, logConfiguration, Assembly.GetCallingAssembly());
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static IServiceCollection AddDignusLog(this IServiceCollection services, LogConfiguration logConfiguration)
+        public static IServiceCollection AddDignusLog(this IServiceCollection services, LogConfiguration logConfiguration, string loggerName)
         {
+            services.TryAddSingleton<Log.ILogger>(serviceProvider => LogManager.GetLogger(loggerName));
             return AddDignusLog(services, logConfiguration, Assembly.GetCallingAssembly());
         }
 
         private static IServiceCollection AddDignusLog(IServiceCollection services, LogConfiguration logConfiguration, Assembly callingAssembly)
         {
-            services.TryAddSingleton<Log.ILogger>(serviceProvider => LogManager.GetDefaultLogger());
-
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, DignusLoggerProvider>());
 
             var logBuilder = LogBuilder.Configuration(logConfiguration);

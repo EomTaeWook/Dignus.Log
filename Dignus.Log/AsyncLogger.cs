@@ -1,4 +1,4 @@
-// Copyright (c) 2021 EomTaeWook
+﻿// Copyright (c) 2021 EomTaeWook
 // MIT License — https://opensource.org/licenses/MIT
 // Part of Dignus Library
 
@@ -19,9 +19,6 @@ namespace Dignus.Log
         private int _processingState;
         private int _isDisposed;
 
-        public AsyncLogger() : this(null)
-        {
-        }
         internal AsyncLogger(string name)
         {
             Name = name;
@@ -35,23 +32,6 @@ namespace Dignus.Log
                 Name = "Dignus.Log.AsyncLogger"
             };
             _processingThread.Start();
-        }
-        public void Debug(string message, string callerFilePath, int callerLineNumber)
-        {
-            Write(LogLevel.Debug, message, callerFilePath, callerLineNumber);
-        }
-        public void Info(string message, string callerFilePath, int callerLineNumber)
-        {
-            Write(LogLevel.Info, message, callerFilePath, callerLineNumber);
-        }
-
-        public void Error(string message, string callerFilePath, int callerLineNumber)
-        {
-            Write(LogLevel.Error, message, callerFilePath, callerLineNumber);
-        }
-        public void Fatal(string message, string callerFilePath, int callerLineNumber)
-        {
-            Write(LogLevel.Fatal, message, callerFilePath, callerLineNumber);
         }
         public void Write(LogLevel logLevelType, string message, string callerFilePath, int callerLineNumber)
         {
@@ -116,17 +96,7 @@ namespace Dignus.Log
             _pendingEvents.Release();
             _processingThread.Join();
 
-            try
-            {
-                for (int i = 0; i < _logTargetsByLevel.Length; ++i)
-                {
-                    _logTargetsByLevel[i].Dispose();
-                }
-            }
-            finally
-            {
-                _pendingEvents.Dispose();
-            }
+            TargetsByLevelDispatcher.DisposeTargets(_logTargetsByLevel);
         }
     }
 }

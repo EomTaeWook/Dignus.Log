@@ -5,12 +5,11 @@
 using Dignus.Log.Model;
 using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace Dignus.Log
 {
-    public class LogHelper
+    public static class LogHelper
     {
         private static ILogger _logger;
         private static ILogger CurrentLogger
@@ -51,103 +50,44 @@ namespace Dignus.Log
         }
         public static void Debug(Exception ex, [CallerFilePath] string callerFilePath = "", [CallerLineNumber] int callerLineNumber = 0)
         {
-            var st = new StackTrace(ex, true);
-            if (st.FrameCount > 0)
-            {
-                var frames = st.GetFrames().Select(f =>
-                new
-                {
-                    FilePath = f.GetFileName(),
-                    LineNumber = f.GetFileLineNumber(),
-                });
-                foreach (var frame in frames)
-                {
-                    if (string.IsNullOrEmpty(frame.FilePath))
-                    {
-                        continue;
-                    }
-                    Debug(ex.Message, frame.FilePath, frame.LineNumber);
-                }
-            }
-            else
-            {
-                Debug(ex.Message, callerFilePath, callerLineNumber);
-            }
+            Write(LogLevel.Debug, ex, callerFilePath, callerLineNumber);
         }
         public static void Info(Exception ex, [CallerFilePath] string callerFilePath = "", [CallerLineNumber] int callerLineNumber = 0)
         {
-            var st = new StackTrace(ex, true);
-            if (st.FrameCount > 0)
-            {
-                var frames = st.GetFrames().Select(f =>
-                new
-                {
-                    FilePath = f.GetFileName(),
-                    LineNumber = f.GetFileLineNumber(),
-                });
-                foreach (var frame in frames)
-                {
-                    if (string.IsNullOrEmpty(frame.FilePath))
-                    {
-                        continue;
-                    }
-                    Info(ex.Message, frame.FilePath, frame.LineNumber);
-                }
-            }
-            else
-            {
-                Info(ex.Message, callerFilePath, callerLineNumber);
-            }
+            Write(LogLevel.Info, ex, callerFilePath, callerLineNumber);
         }
         public static void Error(Exception ex, [CallerFilePath] string callerFilePath = "", [CallerLineNumber] int callerLineNumber = 0)
         {
-            var st = new StackTrace(ex, true);
-            if (st.FrameCount > 0)
-            {
-                var frames = st.GetFrames().Select(f =>
-                new
-                {
-                    FilePath = f.GetFileName(),
-                    LineNumber = f.GetFileLineNumber(),
-                });
-                foreach (var frame in frames)
-                {
-                    if (string.IsNullOrEmpty(frame.FilePath))
-                    {
-                        continue;
-                    }
-                    Error(ex.Message, frame.FilePath, frame.LineNumber);
-                }
-            }
-            else
-            {
-                Error(ex.Message, callerFilePath, callerLineNumber);
-            }
+            Write(LogLevel.Error, ex, callerFilePath, callerLineNumber);
         }
         public static void Fatal(Exception ex, [CallerFilePath] string callerFilePath = "", [CallerLineNumber] int callerLineNumber = 0)
         {
-            var st = new StackTrace(ex, true);
-            if (st.FrameCount > 0)
+            Write(LogLevel.Fatal, ex, callerFilePath, callerLineNumber);
+        }
+        private static void Write(LogLevel logLevel, Exception ex, string callerFilePath, int callerLineNumber)
+        {
+            if (ex == null)
             {
-                var frames = st.GetFrames().Select(f =>
-                new
-                {
-                    FilePath = f.GetFileName(),
-                    LineNumber = f.GetFileLineNumber(),
-                });
+                throw new ArgumentNullException(nameof(ex));
+            }
+
+            var frames = new StackTrace(ex, true).GetFrames();
+            if (frames != null)
+            {
                 foreach (var frame in frames)
                 {
-                    if (string.IsNullOrEmpty(frame.FilePath))
+                    var filePath = frame.GetFileName();
+                    if (string.IsNullOrEmpty(filePath) == false)
                     {
-                        continue;
+                        callerFilePath = filePath;
+                        callerLineNumber = frame.GetFileLineNumber();
+                        break;
                     }
-                    Fatal(ex.Message, frame.FilePath, frame.LineNumber);
                 }
             }
-            else
-            {
-                Fatal(ex.Message, callerFilePath, callerLineNumber);
-            }
+
+            var logEvent = new LogEvent(logLevel, ex.ToString(), callerFilePath, callerLineNumber, CurrentLogger.Name);
+            CurrentLogger.Write(logEvent);
         }
     }
 }

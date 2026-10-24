@@ -14,9 +14,6 @@ namespace Dignus.Log
         private readonly object _syncObj = new object();
         private int _isDisposed;
 
-        public Logger() : this(null)
-        {
-        }
         internal Logger(string name)
         {
             Name = name;
@@ -24,23 +21,6 @@ namespace Dignus.Log
             {
                 _logTargetsByLevel[(int)logLevel] = new TargetsByLevelDispatcher();
             }
-        }
-        public void Debug(string message, string callerFilePath, int callerLineNumber)
-        {
-            Write(LogLevel.Debug, message, callerFilePath, callerLineNumber);
-        }
-        public void Info(string message, string callerFilePath, int callerLineNumber)
-        {
-            Write(LogLevel.Info, message, callerFilePath, callerLineNumber);
-        }
-
-        public void Error(string message, string callerFilePath, int callerLineNumber)
-        {
-            Write(LogLevel.Error, message, callerFilePath, callerLineNumber);
-        }
-        public void Fatal(string message, string callerFilePath, int callerLineNumber)
-        {
-            Write(LogLevel.Fatal, message, callerFilePath, callerLineNumber);
         }
         public void Write(LogLevel logLevelType, string message, string callerFilePath, int callerLineNumber)
         {
@@ -70,10 +50,7 @@ namespace Dignus.Log
                     return;
                 }
                 _isDisposed = 1;
-                for (int i = 0; i < _logTargetsByLevel.Length; ++i)
-                {
-                    _logTargetsByLevel[i].Dispose();
-                }
+                TargetsByLevelDispatcher.DisposeTargets(_logTargetsByLevel);
             }
         }
     }

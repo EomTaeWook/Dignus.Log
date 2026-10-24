@@ -65,12 +65,14 @@ internal static class Program
             Directory.CreateDirectory(Path.GetDirectoryName(logPath));
             File.WriteAllBytes(logPath, Array.Empty<byte>());
             var utf8Encoding = new UTF8Encoding(false);
-            void CreateLoggers()
+            switch (libraryVariant)
             {
-                switch (libraryVariant)
-                {
-                    case "dignus":
-                    case "dignus-async":
+                case "dignus":
+                case "dignus-async":
+                    var logConfiguration = new Dignus.Log.Model.LogConfiguration();
+                    logConfiguration.AddLogger(string.Empty, Dignus.Log.LoggerType.Sync);
+                    foreach (string loggerName in new[] { "warmup", "benchmark" })
+                    {
                         var dignusTarget = new FileLogTarget
                         {
                             LogFileName = logPath,
@@ -80,18 +82,19 @@ internal static class Program
                             ArchiveFileName = Path.Combine(Path.GetDirectoryName(logPath), "archive-{#}.log"),
                             LogFormatRenderer = new LogFormatRenderer(includeFormatting ? "${datetime} | ${level} | ${message}" : "${message}")
                         };
-                        if (libraryVariant == "dignus-async")
-                        {
-                            var asynchronousLogger = new Dignus.Log.AsyncLogger();
-                            asynchronousLogger._logTargetsByLevel[(int)Dignus.Log.LogLevel.Info].AddTarget(dignusTarget);
-                            dignusLogger = asynchronousLogger;
-                        }
-                        else
-                        {
-                            var synchronousLogger = new Dignus.Log.Logger();
-                            synchronousLogger._logTargetsByLevel[(int)Dignus.Log.LogLevel.Info].AddTarget(dignusTarget);
-                            dignusLogger = synchronousLogger;
-                        }
+                        logConfiguration.AddLogger(loggerName, libraryVariant == "dignus-async" ? Dignus.Log.LoggerType.Async : Dignus.Log.LoggerType.Sync).AddLogTarget(Dignus.Log.LogLevel.Info, dignusTarget);
+                    }
+                    Dignus.Log.LogBuilder.Configuration(logConfiguration).Build();
+                    break;
+            }
+
+            void CreateLoggers(string loggerName)
+            {
+                switch (libraryVariant)
+                {
+                    case "dignus":
+                    case "dignus-async":
+                        dignusLogger = Dignus.Log.LogManager.GetLogger(loggerName);
                         break;
                     case "nlog":
                     case "nlog-async":
@@ -139,7 +142,7 @@ internal static class Program
                         throw new ArgumentException("Unknown variant.");
                 }
             }
-            CreateLoggers();
+            CreateLoggers("warmup");
             Action closeLoggers = () =>
             {
                 dignusLogger?.Dispose();
@@ -169,7 +172,7 @@ internal static class Program
             }
             closeLoggers();
             AssertFileLength(logPath, (long)(WarmupCount + 1) * bytesPerLine, "Warmup output was not fully flushed.");
-            CreateLoggers();
+            CreateLoggers("benchmark");
             loggersDisposed = false;
 
             int messagesPerProducer = messageCount / producerCount;

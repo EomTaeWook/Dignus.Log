@@ -4,6 +4,8 @@
 
 using Dignus.Collections;
 using Dignus.Log.Internals;
+using Dignus.Log.LogTarget;
+using Dignus.Log.LogTarget.Interfaces;
 using Dignus.Log.Model;
 using System;
 using System.Collections.Generic;
@@ -11,276 +13,222 @@ using System.Xml;
 
 namespace Dignus.Log
 {
-
     public class LogConfigXmlReader
     {
-        private readonly Dictionary<OptionCategoryType, string> _optionStringToMap = new Dictionary<OptionCategoryType, string>();
-        private readonly Dictionary<AttibuteType, string> _attibuteStringToMap = new Dictionary<AttibuteType, string>();
-        private readonly Dictionary<ElementType, string> _elementStringToMap = new Dictionary<ElementType, string>();
-        private readonly Dictionary<DatabaseAttributeType, string> _databaseAttributeStringToMap = new Dictionary<DatabaseAttributeType, string>();
-
-        private readonly Dictionary<string, LogTargetConfigModel> _logTargetConfigToMap = new Dictionary<string, LogTargetConfigModel>();
-
+        private readonly Dictionary<string, ILogTarget> _logTargets = new Dictionary<string, ILogTarget>();
+        private readonly UniqueSet<string> _loggerNames = new UniqueSet<string>();
         private readonly LogConfiguration _logConfiguration = new LogConfiguration();
-        private readonly LogConfigFactory _logConfigCreator = new LogConfigFactory();
+
         public static LogConfiguration Load(string path)
         {
-            return new LogConfigXmlReader().LoadXmlFile(path);
+            var document = new XmlDocument();
+            document.Load(path);
+            return new LogConfigXmlReader().Read(document);
         }
-        public LogConfigXmlReader()
+        private LogConfiguration Read(XmlDocument document)
         {
-            for (var e = OptionCategoryType.Color; e < OptionCategoryType.Max; ++e)
+            var targetReferences = document.SelectNodes("//*[local-name()='loggers']/*[local-name()='logger']/*[local-name()='target']");
+            foreach (XmlElement element in document.SelectNodes("//*[local-name()='targets']/*[local-name()='target']"))
             {
-                _optionStringToMap[e] = ConvertEnumToString(e);
+                ReadLogTarget(element, targetReferences);
             }
-
-            for (var e = AttibuteType.Id; e < AttibuteType.Max; ++e)
+            foreach (XmlElement element in document.SelectNodes("//*[local-name()='loggers']/*[local-name()='logger']"))
             {
-                _attibuteStringToMap[e] = ConvertEnumToString(e);
+                ReadLogger(element);
             }
-
-            for (var e = ElementType.Targets; e < ElementType.Max; ++e)
-            {
-                _elementStringToMap[e] = ConvertEnumToString(e);
-            }
-            for (var e = DatabaseAttributeType.DbProvider; e < DatabaseAttributeType.Max; ++e)
-            {
-                _databaseAttributeStringToMap[e] = ConvertEnumToString(e);
-            }
-        }
-        private string ConvertEnumToString(Enum enumValue)
-        {
-            var enumString = enumValue.ToString();
-            return $"{char.ToLower(enumString[0])}{enumString.Substring(1)}";
-        }
-
-        private LogConfiguration LoadXmlFile(string path)
-        {
-            using (var reader = XmlReader.Create(path))
-            {
-                while (reader.Read() == true)
-                {
-                    if (reader.IsStartElement() == false)
-                    {
-                        continue;
-                    }
-
-                    if (reader.Name.Equals(ElementType.Targets.ToString(), StringComparison.OrdinalIgnoreCase) == true)
-                    {
-                        var subReader = reader.ReadSubtree();
-
-                        CreateConfigModels(subReader);
-                    }
-                    else if (reader.Name.Equals(ElementType.Loggers.ToString(), StringComparison.OrdinalIgnoreCase) == true)
-                    {
-                        var subReader = reader.ReadSubtree();
-
-                        CreateLoggerTargetConfigModels(subReader);
-                    }
-                }
-            }
-
-            foreach (var item in _logConfiguration.GetLoggerConfigs())
-            {
-                var logConfigModel = _logTargetConfigToMap[item.ConfigKey];
-                _logConfigCreator.CreateLogTargetConfigModel(logConfigModel, _logConfiguration);
-            }
-
             return _logConfiguration;
         }
-        private void CreateLoggerTargetConfigModels(XmlReader reader)
+        private void ReadLogTarget(XmlElement element, XmlNodeList targetReferences)
         {
-            while (reader.Read() == true)
+            var id = element.GetAttribute("id");
+            if (string.IsNullOrEmpty(id) == true)
             {
-                if (reader.IsStartElement() == false)
-                {
-                    continue;
-                }
-                if (reader.Name.Equals(ElementType.Logger.ToString(), StringComparison.OrdinalIgnoreCase) == true)
-                {
-                    _logConfiguration.AddLoggerConfig(ParseLoggerConfigModel(reader));
-                }
+                throw new InvalidOperationException("A target must have an id.");
             }
-        }
-        private void CreateConfigModels(XmlReader reader)
-        {
-            while (reader.Read() == true)
+            if (_logTargets.ContainsKey(id) == true)
             {
-                if (reader.IsStartElement() == false)
+                throw new InvalidOperationException($"The target '{id}' is declared more than once.");
+            }
+
+            var targetType = EnumHelper.GetEnumType<TargetType>(element.GetAttribute("logTarget"));
+            _logTargets.Add(id, null);
+            foreach (XmlElement targetReference in targetReferences)
+            {
+                if (targetReference.GetAttribute("id") != id)
                 {
                     continue;
                 }
 
-                if (reader.Name.Equals(ElementType.Target.ToString(), StringComparison.OrdinalIgnoreCase) == true)
+                ILogTarget logTarget;
+                if (targetType == TargetType.Console)
                 {
-                    var logTarget = EnumHelper.GetEnumType<TargetType>(reader.GetAttribute(_attibuteStringToMap[AttibuteType.LogTarget]));
-
-                    LogTargetConfigModel logTargetConfigModel;
-                    if (logTarget == TargetType.Database)
-                    {
-                        logTargetConfigModel = ParseDatabaseConfigModel(reader);
-                    }
-                    else
-                    {
-                        logTargetConfigModel = ParseConfigModel(reader, logTarget);
-                    }
-                    _logTargetConfigToMap.Add(logTargetConfigModel.Id, logTargetConfigModel);
+                    logTarget = ReadConsoleLogTarget(id, element);
                 }
+                else if (targetType == TargetType.File)
+                {
+                    logTarget = ReadFileLogTarget(id, element);
+                }
+                else
+                {
+                    logTarget = ReadDatabaseLogTarget(id, element);
+                }
+                _logTargets[id] = logTarget;
+                return;
             }
         }
-        private DatabaseLogTargetConfigModel ParseDatabaseConfigModel(XmlReader reader)
+        private ConsoleLogTarget ReadConsoleLogTarget(string id, XmlElement element)
         {
-            var databaseLogTargetConfigModel = new DatabaseLogTargetConfigModel()
+            var consoleLogTarget = new ConsoleLogTarget
             {
-                LogTarget = TargetType.Database,
-                Id = reader.GetAttribute(_attibuteStringToMap[AttibuteType.Id]) ?? string.Empty
+                LogFormatRenderer = element.GetAttribute("format")
+            };
+            foreach (XmlElement option in element.SelectNodes("*[local-name()='option']"))
+            {
+                var category = option.GetAttribute("category");
+                if (IsCategory(category, "color") == false)
+                {
+                    throw UnknownOption(id, category);
+                }
+                var color = EnumHelper.GetEnumType<ConsoleColor>(option.GetAttribute("value"));
+                var logLevel = EnumHelper.GetEnumType<LogLevel>(option.GetAttribute("id"));
+                if (logLevel == LogLevel.Debug)
+                {
+                    consoleLogTarget.DebugColor = color;
+                }
+                else if (logLevel == LogLevel.Info)
+                {
+                    consoleLogTarget.InfoColor = color;
+                }
+                else if (logLevel == LogLevel.Error)
+                {
+                    consoleLogTarget.ErrorColor = color;
+                }
+                else
+                {
+                    consoleLogTarget.FatalColor = color;
+                }
+            }
+            return consoleLogTarget;
+        }
+        private FileLogTarget ReadFileLogTarget(string id, XmlElement element)
+        {
+            var fileLogTarget = new FileLogTarget
+            {
+                LogFormatRenderer = element.GetAttribute("format")
+            };
+            foreach (XmlElement option in element.SelectNodes("*[local-name()='option']"))
+            {
+                var category = option.GetAttribute("category");
+                var value = option.GetAttribute("value");
+                if (IsCategory(category, "fileName") == true)
+                {
+                    fileLogTarget.LogFileName = value;
+                }
+                else if (IsCategory(category, "archiveFileName") == true)
+                {
+                    fileLogTarget.ArchiveFileName = value;
+                }
+                else if (IsCategory(category, "archiveRolling") == true)
+                {
+                    fileLogTarget.ArchiveRollingType = EnumHelper.GetEnumType<FileRollingType>(value);
+                }
+                else if (IsCategory(category, "maxArchiveFiles") == true)
+                {
+                    fileLogTarget.MaxArchiveFile = uint.Parse(value);
+                }
+                else if (IsCategory(category, "keepOpenFile") == true)
+                {
+                    fileLogTarget.KeepOpenFile = bool.Parse(value);
+                }
+                else if (IsCategory(category, "autoFlush") == true)
+                {
+                    fileLogTarget.AutoFlush = bool.Parse(value);
+                }
+                else
+                {
+                    throw UnknownOption(id, category);
+                }
+            }
+            return fileLogTarget;
+        }
+        private DatabaseLogTarget ReadDatabaseLogTarget(string id, XmlElement element)
+        {
+            if (!(element.SelectSingleNode("*[local-name()='database']") is XmlElement databaseElement))
+            {
+                throw new InvalidOperationException($"The database target '{id}' must have a database element.");
+            }
+
+            var databaseLogTarget = new DatabaseLogTarget
+            {
+                DbConnection = databaseElement.GetAttribute("dbConnection"),
+                DbProvider = Type.GetType(databaseElement.GetAttribute("dbProvider"), true),
+                CommandTextRenderer = databaseElement.GetAttribute("dbCommand")
             };
 
-            while (reader.Read() == true)
+            var keepConnectionOpen = databaseElement.GetAttribute("keepConnectionOpen");
+            if (string.IsNullOrEmpty(keepConnectionOpen) == false)
             {
-                if (reader.IsStartElement() == false)
-                {
-                    continue;
-                }
-                if (reader.Name.Equals(_elementStringToMap[ElementType.Database]))
-                {
-                    databaseLogTargetConfigModel.DbAttributes.Add(new OptionModel()
-                    {
-                        Category = DatabaseAttributeType.DbConnection.ToString(),
-                        Value = reader.GetAttribute(_databaseAttributeStringToMap[DatabaseAttributeType.DbConnection]) ?? string.Empty
-                    });
-
-                    databaseLogTargetConfigModel.DbAttributes.Add(new OptionModel()
-                    {
-                        Category = DatabaseAttributeType.DbProvider.ToString(),
-                        Value = reader.GetAttribute(_databaseAttributeStringToMap[DatabaseAttributeType.DbProvider]) ?? string.Empty
-                    });
-                    databaseLogTargetConfigModel.DbAttributes.Add(new OptionModel()
-                    {
-                        Category = DatabaseAttributeType.DbCommand.ToString(),
-                        Value = reader.GetAttribute(_databaseAttributeStringToMap[DatabaseAttributeType.DbCommand]) ?? string.Empty
-                    });
-
-                    var subReader = reader.ReadSubtree();
-
-                    while (subReader.ReadToFollowing("option"))
-                    {
-                        var option = new OptionModel()
-                        {
-                            Category = subReader.GetAttribute(_attibuteStringToMap[AttibuteType.Category]),
-                            Id = subReader.GetAttribute(_attibuteStringToMap[AttibuteType.Id]) ?? string.Empty,
-                            Value = subReader.GetAttribute(_attibuteStringToMap[AttibuteType.Value]) ?? string.Empty
-                        };
-                        databaseLogTargetConfigModel.Options.Add(option);
-                    }
-                }
+                databaseLogTarget.KeepConnection = bool.Parse(keepConnectionOpen);
             }
 
-            return databaseLogTargetConfigModel;
+            foreach (XmlElement option in databaseElement.SelectNodes("*[local-name()='option']"))
+            {
+                var category = option.GetAttribute("category");
+                if (IsCategory(category, "parameter") == false)
+                {
+                    throw UnknownOption(id, category);
+                }
+                databaseLogTarget.AddDbParameter(option.GetAttribute("id"), option.GetAttribute("value"));
+            }
+            return databaseLogTarget;
         }
-        private ArrayQueue<OptionModel> ParseOptionModels(XmlReader reader)
+        private void ReadLogger(XmlElement element)
         {
-            var optionDatas = new ArrayQueue<OptionModel>();
-            while (reader.Read() == true)
+            var loggerName = LogConfiguration.ToLoggerName(element.GetAttribute("loggerName"));
+            if (_loggerNames.Add(loggerName) == false)
             {
-                if (reader.IsStartElement() == false)
+                throw new InvalidOperationException($"The logger '{loggerName}' is declared more than once.");
+            }
+
+            LoggerConfig loggerConfig = null;
+            var loggerType = element.GetAttribute("loggerType");
+            if (string.IsNullOrEmpty(loggerType) == false)
+            {
+                loggerConfig = _logConfiguration.AddLogger(loggerName, EnumHelper.GetEnumType<LoggerType>(loggerType));
+            }
+
+            foreach (XmlElement targetElement in element.SelectNodes("*[local-name()='target']"))
+            {
+                var id = targetElement.GetAttribute("id");
+                if (_logTargets.TryGetValue(id, out ILogTarget logTarget) == false)
                 {
-                    continue;
+                    throw new InvalidOperationException($"The logger '{loggerName}' refers to an unknown target '{id}'.");
                 }
-                if (reader.Name.Equals(_elementStringToMap[ElementType.Option]))
-                {
-                    var option = new OptionModel()
-                    {
-                        Category = reader.GetAttribute(_attibuteStringToMap[AttibuteType.Category]),
-                        Id = reader.GetAttribute(_attibuteStringToMap[AttibuteType.Id]) ?? string.Empty,
-                        Value = reader.GetAttribute(_attibuteStringToMap[AttibuteType.Value]) ?? string.Empty
-                    };
 
-                    optionDatas.Add(option);
+                var minLogLevel = LogLevel.Debug;
+                var minLogLevelValue = targetElement.GetAttribute("minLogLevel");
+                if (string.IsNullOrEmpty(minLogLevelValue) == false)
+                {
+                    minLogLevel = EnumHelper.GetEnumType<LogLevel>(minLogLevelValue);
                 }
-                else if (reader.Name.Equals(_elementStringToMap[ElementType.Database]))
+
+                if (loggerConfig != null)
                 {
-                    optionDatas.Add(new OptionModel()
-                    {
-                        Category = DatabaseAttributeType.DbConnection.ToString(),
-                        Value = reader.GetAttribute(_databaseAttributeStringToMap[DatabaseAttributeType.DbConnection]) ?? string.Empty
-                    });
-
-                    optionDatas.Add(new OptionModel()
-                    {
-                        Category = DatabaseAttributeType.DbProvider.ToString(),
-                        Value = reader.GetAttribute(_databaseAttributeStringToMap[DatabaseAttributeType.DbProvider]) ?? string.Empty
-                    });
-                    optionDatas.Add(new OptionModel()
-                    {
-                        Category = DatabaseAttributeType.DbCommand.ToString(),
-                        Value = reader.GetAttribute(_databaseAttributeStringToMap[DatabaseAttributeType.DbCommand]) ?? string.Empty
-                    });
-
-                    var subReader = reader.ReadSubtree();
-
-                    while (subReader.ReadToFollowing("option"))
-                    {
-                        var option = new OptionModel()
-                        {
-                            Category = subReader.GetAttribute(_attibuteStringToMap[AttibuteType.Category]),
-                            Id = subReader.GetAttribute(_attibuteStringToMap[AttibuteType.Id]) ?? string.Empty,
-                            Value = subReader.GetAttribute(_attibuteStringToMap[AttibuteType.Value]) ?? string.Empty
-                        };
-                        optionDatas.Add(option);
-                    }
+                    loggerConfig.AddLogTarget(minLogLevel, logTarget);
+                }
+                else
+                {
+                    _logConfiguration.AddLogTarget(loggerName, minLogLevel, logTarget);
                 }
             }
-            return optionDatas;
         }
-
-        private LogTargetConfigModel ParseConfigModel(XmlReader reader, TargetType targetType)
+        private static bool IsCategory(string category, string name)
         {
-
-            var logTargetConfigModel = new LogTargetConfigModel()
-            {
-                Id = reader.GetAttribute(_attibuteStringToMap[AttibuteType.Id]) ?? string.Empty,
-                LogTarget = targetType
-            };
-
-            var logFormatOption = new OptionModel()
-            {
-                Category = AttibuteType.Format.ToString(),
-                Value = reader.GetAttribute(_attibuteStringToMap[AttibuteType.Format]) ?? string.Empty,
-            };
-
-            logTargetConfigModel.Options.Add(logFormatOption);
-
-            logTargetConfigModel.Options.AddRange(ParseOptionModels(reader.ReadSubtree()));
-
-            return logTargetConfigModel;
+            return string.Equals(category, name, StringComparison.OrdinalIgnoreCase);
         }
-
-        private LoggerConfig ParseLoggerConfigModel(XmlReader reader)
+        private static InvalidOperationException UnknownOption(string id, string category)
         {
-            var logger = new LoggerConfig();
-
-            var key = reader.GetAttribute(_attibuteStringToMap[AttibuteType.Id]);
-
-            logger.ConfigKey = key;
-
-            var minLogLevel = reader.GetAttribute(_attibuteStringToMap[AttibuteType.MinLogLevel]);
-
-            if (string.IsNullOrEmpty(minLogLevel) == false)
-            {
-                logger.MinLogLevel = EnumHelper.GetEnumType<LogLevel>(minLogLevel);
-            }
-
-            var name = reader.GetAttribute(_attibuteStringToMap[AttibuteType.LoggerName]);
-
-            if (string.IsNullOrEmpty(name))
-            {
-                name = LogManager.DefaultLoggerName();
-            }
-
-            logger.LoggerName = name;
-
-            return logger;
+            return new InvalidOperationException($"The target '{id}' has an unknown option category '{category}'.");
         }
     }
 }
