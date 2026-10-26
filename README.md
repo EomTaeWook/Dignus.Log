@@ -3,6 +3,25 @@
 - [Dignus.Log](./publish/Dignus.Log.md)
 - [Dignus.Extensions.Logging](./publish/Dignus.Extensions.Logging.md)
 
+## Usage
+
+Configure the default logger, then write through `ILogger`:
+
+```csharp
+using Dignus.Log;
+using Dignus.Log.LogTarget;
+using Dignus.Log.Model;
+
+var logConfiguration = new LogConfiguration();
+logConfiguration.AddLogTarget(string.Empty, LogLevel.Info, new ConsoleLogTarget());
+LogBuilder.Configuration(logConfiguration).Build();
+
+ILogger logger = LogManager.GetDefaultLogger();
+logger.Info("Application started");
+```
+
+`ILogger.Write(level, message)` and the built-in `Debug`, `Info`, `Error`, and `Fatal` extension methods automatically capture the caller file path and line number when those arguments are omitted. See [Dignus.Log usage](./publish/Dignus.Log.md) for file output, synchronous logging, and other options.
+
 Open [Dignus.Log.Benchmarks.sln](./Dignus.Log.Benchmarks.sln) for the benchmark projects. They reference the library project and use its public APIs.
 
 ```powershell

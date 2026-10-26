@@ -34,10 +34,21 @@ logConfiguration.AddLogTarget(string.Empty, LogLevel.Info, fileLogTarget);
 
 LogBuilder.Configuration(logConfiguration).Build();
 ILogger logger = LogManager.GetDefaultLogger();
-logger.Write(LogLevel.Info, "Application started", string.Empty, 0);
+logger.Info("Application started");
 ```
 
-`ILogger.Write` takes a level, message, caller file path, and caller line number; the `Debug`, `Info`, `Error`, and `Fatal` extension methods on `ILogger` take the same arguments without the level. Use `string.Empty` and `0` when caller information is unnecessary, or use `LogHelper` below to capture it automatically.
+`ILogger.Write(level, message)` automatically captures the caller file path and line number through `[CallerFilePath]` and `[CallerLineNumber]`. Pass those arguments explicitly to override them, or pass `string.Empty` and `0` when caller information is unnecessary.
+
+`Debug`, `Info`, `Error`, and `Fatal` are built-in extension methods on `ILogger`, available with `using Dignus.Log;`. They also capture caller information automatically, so only the message is required:
+
+```csharp
+logger.Debug("Diagnostic details");
+logger.Info("Application started");
+logger.Error("Operation failed");
+logger.Fatal("Application cannot continue");
+```
+
+These calls use the same targets and minimum levels as `Write`; the configuration above filters out `Debug` messages.
 
 ## Synchronous and asynchronous logging
 
