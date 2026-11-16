@@ -11,14 +11,16 @@
 
     <Copyright>© 2021–2026 EomTaeWook. Released under the MIT License.</Copyright>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <PackageIcon>Icon.jpg</PackageIcon>
+    <PackageIcon>Icon.png</PackageIcon>
     <PackageReadmeFile>Dignus.Log.md</PackageReadmeFile>
-    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
 
     <PackageProjectUrl>https://github.com/EomTaeWook/Dignus.Log</PackageProjectUrl>
+    <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/EomTaeWook/Dignus.Log</RepositoryUrl>
     
-    <Description>Lightweight and fast logging library for Dignus.</Description>
+    <Description>C# logging library with synchronous and asynchronous loggers, configurable formatting, and console and file targets.</Description>
+    <PackageTags>logging;logger;async;console;file;dotnet</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -32,15 +34,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\LICENSE">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
     <None Include="..\publish\Dignus.Log.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>
-    <None Include="..\publish\Icon.jpg">
+    <None Include="..\publish\Icon.png">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>

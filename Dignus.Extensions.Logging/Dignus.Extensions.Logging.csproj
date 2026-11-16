@@ -12,25 +12,23 @@
 
     <Copyright>© 2021–2026 EomTaeWook. Released under the MIT License.</Copyright>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <PackageIcon>Icon.jpg</PackageIcon>
+    <PackageIcon>Icon.png</PackageIcon>
     <PackageReadmeFile>Dignus.Extensions.Logging.md</PackageReadmeFile>
-    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     
     <PackageProjectUrl>https://github.com/EomTaeWook/Dignus.Log</PackageProjectUrl>
+    <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/EomTaeWook/Dignus.Log</RepositoryUrl>
-    <Description>Lightweight logging extension for integrating Dignus.Log with Microsoft.Extensions.Logging</Description>
+    <Description>Integrates Dignus.Log with Microsoft.Extensions.Logging and dependency injection.</Description>
+    <PackageTags>logging;logger;dependency-injection;extensions;dotnet;dignus</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\LICENSE">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
     <None Include="..\publish\Dignus.Extensions.Logging.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>
-    <None Include="..\publish\Icon.jpg">
+    <None Include="..\publish\Icon.png">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>
