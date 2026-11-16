@@ -20,7 +20,6 @@
     <RepositoryUrl>https://github.com/EomTaeWook/Dignus.Log</RepositoryUrl>
     
     <Description>C# logging library with synchronous and asynchronous loggers, configurable formatting, and console and file targets.</Description>
-    <PackageTags>logging;logger;async;console;file;dotnet</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

@@ -20,7 +20,6 @@
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/EomTaeWook/Dignus.Log</RepositoryUrl>
     <Description>Integrates Dignus.Log with Microsoft.Extensions.Logging and dependency injection.</Description>
-    <PackageTags>logging;logger;dependency-injection;extensions;dotnet;dignus</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
