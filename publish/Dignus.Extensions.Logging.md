@@ -1,5 +1,7 @@
 # Dignus.Extensions.Logging
 
+[English overview](https://github.com/EomTaeWook/Dignus.Log/blob/main/README.md) | [한국어 개요](https://github.com/EomTaeWook/Dignus.Log/blob/main/README.ko.md)
+
 **Integration module connecting `Dignus.Log` with `Microsoft.Extensions.Logging`.**  
 Provides a lightweight logging bridge that enables seamless use of Dignus’ logger  
 within the standard ASP.NET Core and .NET logging infrastructure.

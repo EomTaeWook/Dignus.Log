@@ -1,5 +1,7 @@
 # Dignus.Log
 
+[English overview](https://github.com/EomTaeWook/Dignus.Log/blob/main/README.md) | [한국어 개요](https://github.com/EomTaeWook/Dignus.Log/blob/main/README.ko.md)
+
 `Dignus.Log` routes messages to console, file, and database targets. Configure targets in C# or XML, then write through `LogHelper` or `ILogger`.
 
 ## Install
