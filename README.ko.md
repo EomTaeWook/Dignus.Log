@@ -37,9 +37,9 @@ logger.Info("Application started");
 
 ## 문서
 
-- [로깅 API · 영어](publish/Dignus.Log.md)
-- [Microsoft 로깅 연동 · 영어](publish/Dignus.Extensions.Logging.md)
-- [벤치마크 방법과 결과 · 영어](docs/Usage.md)
+- [로깅 API](publish/Dignus.Log.ko.md)
+- [Microsoft 로깅 연동](publish/Dignus.Extensions.Logging.ko.md)
+- [벤치마크 방법과 결과](docs/Usage.ko.md)
 
 ## 라이선스
 

@@ -1,5 +1,7 @@
 # Dignus.Extensions.Logging
 
+English | [한국어](Dignus.Extensions.Logging.ko.md)
+
 [English overview](https://github.com/EomTaeWook/Dignus.Log/blob/main/README.md) | [한국어 개요](https://github.com/EomTaeWook/Dignus.Log/blob/main/README.ko.md)
 
 **Integration module connecting `Dignus.Log` with `Microsoft.Extensions.Logging`.**  
